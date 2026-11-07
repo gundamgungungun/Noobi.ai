@@ -1,0 +1,35 @@
+node_modules/
+dist/
+release/
+coverage/
+*.log
+.DS_Store
+.noobi-smoke/
+
+# Local credentials and machine-specific state
+.env*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+credentials*.json
+service-account*.json
+.noobi-private/
+*.tsbuildinfo
+*.tmp
+
+# App data and generated user projects must stay local
+codex-home/
+events/
+Noobi Games/
+projects.json
+asset-plans.json
+godot-environment.json
+media-providers.json
+image-generation-attestations.json
+auth.json
+config.toml
+*.sqlite
+*.sqlite3
+*.db
