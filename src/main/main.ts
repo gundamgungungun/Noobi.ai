@@ -114,6 +114,7 @@ import {
 import { PromptTemplateStore } from './promptTemplateStore.js';
 import { verifyVisualAssetCoverage } from './visualAssetCoverage.js';
 import { verifyWebProductionBuild } from './webProductionBuild.js';
+import { waitForSmokeCondition } from './smokeReadiness.js';
 import {
   synchronizeGodotPresentationPolicy,
   synchronizeWorkspaceHostPolicy,
@@ -2243,6 +2244,11 @@ async function ensureSmokeProject(): Promise<void> {
   if (validStages.includes(smokeStage as PipelineStage)) smokePatch.stage = smokeStage as PipelineStage;
   if (validStatuses.includes(smokeStatus as ProjectStatus)) smokePatch.status = smokeStatus as ProjectStatus;
   const smokePack = process.env.NOOBI_SMOKE_PACK?.trim();
+  // Scene captures need the production view; draft projects already have a playable starter preview.
+  if (!smokePatch.status && (isNoobiSceneId(process.env.NOOBI_SMOKE_SCENE?.trim())
+    || isNoobiPackId(smokePack) || process.env.NOOBI_SMOKE_CREW === '1')) {
+    smokePatch.status = 'running';
+  }
   if (isNoobiPackId(smokePack)) {
     smokePatch.noobiPackOverrideId = smokePack;
     const smokeCrew = DEFAULT_NOOBI_CREW.map((member) => ({ ...member }));
@@ -2293,12 +2299,17 @@ async function captureSmoke(window: BrowserWindow, target: string): Promise<void
   if (process.env.NOOBI_SMOKE_NARROW === '1') {
     window.setSize(760, 800, false);
   }
-  await new Promise((resolvePromise) => setTimeout(resolvePromise, 2_500));
-  const healthy = await window.webContents.executeJavaScript(
-    `Boolean(document.querySelector('.app-shell')) && !document.querySelector('.loading-error')`,
+  await waitForSmokeCondition(async () => window.webContents.executeJavaScript(
+    `(() => {
+      const error = document.querySelector('.loading-error');
+      if (error) throw new Error(error.textContent || 'Renderer reported a loading error');
+      return Boolean(document.querySelector('.app-shell'));
+    })()`,
     true,
-  ) as boolean;
-  if (!healthy) throw new Error('Renderer did not reach the Noobi workbench');
+  ) as Promise<boolean>, 'the Noobi renderer');
+  await waitForSmokeCondition(async () => window.webContents.executeJavaScript(
+    `document.fonts.status === 'loaded'`, true,
+  ) as Promise<boolean>, 'local fonts');
   const smokeTheme = process.env.NOOBI_SMOKE_THEME;
   if (smokeTheme === 'light' || smokeTheme === 'dark') {
     await window.webContents.executeJavaScript(
@@ -2571,7 +2582,20 @@ async function captureSmoke(window: BrowserWindow, target: string): Promise<void
       `document.querySelector('.project-item')?.click()`,
       true,
     );
-    await delay(650);
+    const project = (await projectStore.list())[0];
+    const expectsProductionScene = project?.status === 'running';
+    await waitForSmokeCondition(async () => window.webContents.executeJavaScript(
+      `(() => {
+        if (!document.querySelector('.app-shell.view-workbench')
+          || document.querySelector('.app-shell.is-page-transitioning')) return false;
+        if (${expectsProductionScene}) {
+          const image = document.querySelector('.production-diorama .workshop-map img');
+          return image instanceof HTMLImageElement && image.complete && image.naturalWidth > 0;
+        }
+        return document.querySelector('.preview-pane iframe') instanceof HTMLIFrameElement;
+      })()`,
+      true,
+    ) as Promise<boolean>, expectsProductionScene ? 'the production scene' : 'the playable preview');
     const hasPlayablePreview = await window.webContents.executeJavaScript(
       `document.querySelector('.preview-pane iframe') instanceof HTMLIFrameElement`,
       true,
@@ -2621,7 +2645,16 @@ async function captureSmoke(window: BrowserWindow, target: string): Promise<void
         throw new Error(`Noobi runtime background did not load correctly: ${JSON.stringify(sceneState)}`);
       }
       process.stdout.write(`Noobi runtime background loaded: ${sceneState.id}\n`);
-    } else if (process.env.NOOBI_SMOKE_EXPERIENCE_REPORT === 'expand' && hasPlayablePreview) {
+    } else if (!expectsProductionScene && hasPlayablePreview) {
+      const previewUrl = await window.webContents.executeJavaScript(
+        `document.querySelector('.preview-pane iframe')?.src ?? ''`, true,
+      ) as string;
+      await waitForSmokeCondition(async () => {
+        const frame = window.webContents.mainFrame.framesInSubtree.find((candidate) => candidate.url === previewUrl);
+        return frame ? frame.executeJavaScript(
+          `document.readyState === 'complete' && Boolean(document.body?.children.length)`,
+        ) as Promise<boolean> : false;
+      }, 'the game preview document');
       process.stdout.write('Noobi workbench loaded a playable game preview\n');
     } else if (process.env.NOOBI_SMOKE_CREW !== '1') {
       const soloState = await window.webContents.executeJavaScript(
@@ -3005,6 +3038,13 @@ async function captureSmoke(window: BrowserWindow, target: string): Promise<void
     );
     await delay(250);
   }
+  await waitForSmokeCondition(async () => window.webContents.executeJavaScript(
+    `!document.querySelector('.app-shell.is-page-transitioning, .launch-transition')`, true,
+  ) as Promise<boolean>, 'the completed page transition');
+  // Let the compositor display the settled DOM before taking the screenshot.
+  await waitForSmokeCondition(async () => window.webContents.executeJavaScript(
+    `new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve(true))))`, true,
+  ) as Promise<boolean>, 'the settled frame');
   const image = await window.webContents.capturePage();
   const output = resolve(target);
   await mkdir(dirname(output), { recursive: true });

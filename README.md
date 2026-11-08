@@ -47,8 +47,8 @@ Noobi.ai gives Codex a bounded game-production loop instead of asking one agent 
 
 - macOS (the current tested and packaged target)
 - Node.js 22 LTS and npm
-- a ChatGPT/Codex account
-- an available image route: a configured image provider or Codex ImageGen
+- a ChatGPT/Codex account for AI production
+- an available image provider or Codex ImageGen route when image generation is needed
 - Godot 4 with exactly matching Web export templates, only when the Agent selects Godot
 
 ```bash
@@ -58,7 +58,16 @@ npm ci
 npm run dev
 ```
 
-On first launch, open **Settings → Codex account** and sign in. Noobi.ai uses an app-private `userData/codex-home`; it does not overwrite your global `~/.codex` configuration.
+### What needs an external service?
+
+| Use | Requirements |
+| --- | --- |
+| Open the app, view settings, manage existing local projects and preview local Web projects | Install Node.js/npm dependencies first; no AI API key or account sign-in is required for these local features. The initial dependency installation requires internet access. |
+| Generate or continue building a game | An available ChatGPT/Codex account and network access. Production is blocked until signed in. |
+| Generate images, audio or 3D | Configure the chosen provider endpoint and key; an available Codex ImageGen route can also generate images. Service quotas apply. |
+| Build and export Godot games | Godot 4 with exactly matching Web export templates. |
+
+Before AI production, open **Settings → Codex account** and sign in. Noobi.ai uses an app-private `userData/codex-home`; it does not overwrite your global `~/.codex` configuration. Configure accounts and provider keys locally; keep them out of Git and presentation screenshots.
 
 If Codex cannot be located automatically, point Noobi.ai at a binary explicitly:
 
@@ -172,6 +181,16 @@ npm run build           # production renderer and main bundles
 npm run verify          # typecheck + tests + production build
 npm run smoke:ui        # isolated Electron UI screenshot
 ```
+
+These UI checks do not start AI production or require sign-in. Build once, then verify the existing game preview and production scene separately:
+
+```bash
+npm run build
+NOOBI_SMOKE_CAPTURE=.noobi-smoke/preview.png NOOBI_SMOKE_VIEW=workbench NOOBI_SMOKE_STATUS=draft ./node_modules/.bin/electron .
+NOOBI_SMOKE_CAPTURE=.noobi-smoke/studio.png NOOBI_SMOKE_VIEW=workbench NOOBI_SMOKE_STATUS=running ./node_modules/.bin/electron .
+```
+
+Each UI smoke readiness check waits up to 15 seconds and still fails on renderer errors. Selecting `NOOBI_SMOKE_SCENE`, `NOOBI_SMOKE_PACK` or `NOOBI_SMOKE_CREW=1` seeds a simulated running project unless a status is explicitly supplied, so the scene rather than the game iframe is checked. Test data stays in the ignored `.noobi-smoke/` directory.
 
 The following smoke tests use a signed-in Codex account and may consume a small amount of Codex or media-provider quota:
 

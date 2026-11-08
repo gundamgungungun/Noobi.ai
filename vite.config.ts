@@ -8,6 +8,8 @@ export default defineConfig({
   build: {
     outDir: '../../dist/renderer',
     emptyOutDir: true,
+    // Keep fonts on the app's own origin, as required by font-src 'self'.
+    assetsInlineLimit: (filePath) => /\.(?:woff2?|ttf|otf)$/iu.test(filePath) ? false : undefined,
   },
 });
 

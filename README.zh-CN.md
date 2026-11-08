@@ -47,8 +47,8 @@ Noobi.ai 不让单个 Agent 在一次回合里即兴完成所有工作，而是�
 
 - macOS（当前已测试、已配置打包的目标平台）
 - Node.js 22 LTS 与 npm
-- 可用的 ChatGPT/Codex 账户
-- 可用的图片生成路线：已配置图片 Provider 或 Codex ImageGen
+- AI 制作需要可用的 ChatGPT/Codex 账户
+- 需要生成图片时：可用的图片 Provider 或 Codex ImageGen 路线
 - 只有 Agent 判断需要 Godot 时，才要求 Godot 4 与版本精确匹配的 Web Export Templates
 
 ```bash
@@ -58,7 +58,16 @@ npm ci
 npm run dev
 ```
 
-首次启动后，打开**设置 → Codex 账户**完成登录。Noobi.ai 使用应用私有的 `userData/codex-home`，不会覆盖全局 `~/.codex` 配置。
+### 不同功能需要什么
+
+| 使用场景 | 外部依赖 |
+| --- | --- |
+| 打开应用、查看设置、管理已有本地工程、预览本地 Web 工程 | 安装上述 Node.js/npm 依赖后即可使用，无需 AI API Key 或账户登录；首次安装依赖需要联网。 |
+| 从创意生成或继续修改游戏 | 需要可用的 ChatGPT/Codex 账户及网络。未登录时应用会阻止启动制作。 |
+| 图片、音频或 3D 生成 | 按所选路线配置 Provider 地址与密钥；图片也可使用可用的 Codex ImageGen。具体额度取决于服务。 |
+| Godot 游戏构建、导出 | 另外需要 Godot 4 和精确匹配的 Web Export Templates。 |
+
+使用 AI 制作前，打开**设置 → Codex 账户**完成登录。Noobi.ai 使用应用私有的 `userData/codex-home`，不会覆盖全局 `~/.codex` 配置。账户与 Provider 密钥只在自己的本机配置，不要提交到 Git 或写入演示截图。
 
 如果应用无法自动找到 Codex，可显式指定二进制：
 
@@ -144,6 +153,16 @@ npm run build           # 生产构建
 npm run verify          # 类型检查 + 测试 + 生产构建
 npm run smoke:ui        # 隔离数据的 Electron UI 截图
 ```
+
+以下 UI 检查不启动 AI 制作，也不需要登录。先构建，再分别检查已有游戏预览与制作场景：
+
+```bash
+npm run build
+NOOBI_SMOKE_CAPTURE=.noobi-smoke/preview.png NOOBI_SMOKE_VIEW=workbench NOOBI_SMOKE_STATUS=draft ./node_modules/.bin/electron .
+NOOBI_SMOKE_CAPTURE=.noobi-smoke/studio.png NOOBI_SMOKE_VIEW=workbench NOOBI_SMOKE_STATUS=running ./node_modules/.bin/electron .
+```
+
+UI smoke 的每项就绪检查最多等待 15 秒；真正的渲染失败会报错。显式选择 `NOOBI_SMOKE_SCENE`、`NOOBI_SMOKE_PACK` 或 `NOOBI_SMOKE_CREW=1` 时，未指定状态的测试工程会进入模拟制作状态，以验证场景而非游戏 iframe。测试数据保存在忽略的 `.noobi-smoke/` 目录。
 
 以下真实 smoke 会使用已登录账户，并可能消耗少量 Codex 或媒体 Provider 额度：
 
